@@ -1,0 +1,28 @@
+---
+version: '3'
+
+services:
+  drone-server:
+    image: drone/drone:2.4.0
+    container_name: drone-server
+    ports:
+      - 80:80
+      - 443:443
+    restart: always
+    env_file:
+      - /etc/drone/server.env
+      - /etc/drone/common.env
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock
+      - /var/lib/drone:/data
+
+  drone-agent:
+    image: drone/drone-runner-docker:linux-amd64
+    container_name: drone-runner
+    depends_on:
+      - drone-server
+    env_file:
+      - /etc/drone/runner.env
+      - /etc/drone/common.env
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock

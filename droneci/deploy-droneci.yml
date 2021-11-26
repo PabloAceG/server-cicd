@@ -1,0 +1,91 @@
+---
+- hosts: cdci
+  become: true
+  tasks:
+    - name: Install Docker dependencies
+      apt:
+        name: "{{item}}"
+        state: present
+        update_cache: yes
+      loop:
+        - ca-certificates
+        - curl
+        - gnupg
+        - lsb-release
+
+    - name: Add Docker GPG Key
+      apt_key:
+        url: https://download.docker.com/linux/ubuntu/gpg
+        state: present
+
+    - name: Add Docker repository to apt
+      apt_repository:
+        repo: deb https://download.docker.com/linux/ubuntu bionic stable
+        state: present
+
+    - name: Install Docker
+      apt:
+        name: "{{ item }}"
+        state: present
+        update_cache: yes
+      loop:
+        - docker-ce
+        - docker-ce-cli
+        - docker-compose
+        - containerd.io
+
+    - name: Make sure docker is enabled
+      service:
+        name: docker
+        state: started
+        enabled: yes
+
+    - name: Ensure group "docker" exists
+      ansible.builtin.group:
+        name: docker
+        state: present
+
+    - name: Adding user to "docker" group
+      user:
+        name: '{{ hostvars[inventory_hostname].ansible_user }}'
+        groups: docker
+        append: yes
+
+    - name: Ansible create folder to dump conf files
+      file:
+        path: "{{ item }}"
+        state: directory
+        mode: "u=rw,g=r,o=r"
+      loop:
+        - /etc/drone
+        - /etc/certs/drone
+
+    - name: Copy Drone Docker Compose file and dependencies
+      copy:
+        src: "{{ item }}"
+        dest: /etc/drone
+      loop:
+        - docker-compose-drone.yml
+        - sources/common.env
+        - sources/runner.env
+        - sources/server.env
+
+    - name: Generate Drone certificates
+      community.crypto.openssh_keypair:
+        path: /etc/certs/drone/server.pem
+        type: rsa
+        state: present
+        comment: "TLS certificates for Drone CI tool"
+
+    - name: Deploy Drone with Docker Compose
+      docker_compose:
+        project_src: /etc/drone
+        files:
+          - docker-compose-drone.yml
+
+    - name: Prune Docker
+      community.docker.docker_prune:
+        images: yes
+        networks: yes
+        volumes: yes
+        builder_cache: yes
